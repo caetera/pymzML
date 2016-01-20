@@ -40,8 +40,10 @@ import math
 import copy
 # import random
 import re
+import numpy as np
 
 from base64 import b64decode as b64dec
+from base64 import b64encode as b64enc
 from struct import unpack as unpack
 from collections import defaultdict as ddict
 from operator import itemgetter as itemgetter
@@ -49,6 +51,7 @@ import zlib
 
 PROTON = 1.00727646677
 ISOTOPE_AVERAGE_DIFFERENCE = 1.002
+ns = {'mzml': 'http://psi.hupo.org/ms/mzml'} #mzML namespace
 
 class Spectrum(dict):
     def __init__(self, measuredPrecision = 5e-6 , param=None):
@@ -1570,7 +1573,52 @@ class Spectrum(dict):
             pass
 
         return
+    
+    def updateXMLData(self):
+        """
+        Update data stored in XML tree using m/z and intensity arrays
+        """
+        for dataArray in self._xmlTree.iterfind('.//mzml:binaryDataArray', ns):
+            dsize = None
+            compress = None
+            data = None
+            for cvParam in dataArray.iterfind('mzml:cvParam', ns):
+                if cvParam.get('name') == '32-bit float':
+                    dsize = '<f4'                
+                elif cvParam.get('name') == '64-bit float':
+                    dsize = '<f8'
+                    
+                if cvParam.get('name') == 'no compression':
+                    compress = 'none'
+                elif cvParam.get('name') == 'zlib compression':
+                    compress = 'zlib'
+                    
+                if cvParam.get('name') == 'm/z array':
+                    data = 'mz'
+                elif cvParam.get('name') == 'intensity array':
+                    data = 'i'
+                elif cvParam.get('name') == 'time array':
+                    data = 'time'
+            
+            databytes = np.array(self.__getattribute__(data)).astype(dsize).tobytes()
+            
+            if compress == 'zlib':
+                databytes = zlib.compress(databytes)
+            
+            datastring = b64enc(databytes)
 
+            dataArray.find('mzml:binary', ns).text = datastring
+            dataArray.set('encodedLength', str(len(datastring)))
+        
+        self._xmlTree.set('defaultArrayLength', str(len(self.peaks)))
+    
+    def prepareForOutput(self):
+        """
+        Prepare spectrum for the output, by creating the copy of it and updating XML representation
+        """
+        spec = self.deRef()
+        spec.updateXMLData()
+        return spec
 
 if __name__ == '__main__':
     print(__doc__)

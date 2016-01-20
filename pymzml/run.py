@@ -654,7 +654,7 @@ class Writer(object):
         self.newTree = None
         self.TreeBuilder = cElementTree.TreeBuilder()
         self.run = run
-        self.info = {'counters': ddict(int)}
+        self.info = {'counters': ddict(int), 'dataProcRef': ddict(int)}
 
         if self.run.info['filename'].endswith('.gz'):
             import gzip
@@ -692,7 +692,7 @@ class Writer(object):
                         'accession' : 'MS:1000531',
                         'cvRef'     : 'MS',
                         'name'      : 'pymzML Writer',
-                        'version'   : '0.7.6',
+                        'value'     : '',
                     }
                 )
                 new_line = cElementTree.tostring(addon, encoding='utf-8')
@@ -715,11 +715,11 @@ class Writer(object):
         return
 
     def addSpec(self, spec):
-        self._addTree(spec.deRef(), typeOfSpec='spectrum')
+        self._addTree(spec.prepareForOutput(), typeOfSpec='spectrum')
         return
 
     def addChromatogram(self, spec):
-        self._addTree(spec.deRef(), typeOfSpec='chromatogram')
+        self._addTree(spec.prepareForOutput(), typeOfSpec='chromatogram')
         return
 
     def _addTree(self, spec, typeOfSpec=None):
@@ -736,6 +736,7 @@ class Writer(object):
         self.lookup[typeOfSpec + 'Indeces'].append(offset)
 
         self.info['counters'][typeOfSpec] += 1
+        self.info['dataProcRef'][spec._xmlTree.get('dataProcessingRef')] += 1
 
         return
 
@@ -748,8 +749,9 @@ class Writer(object):
                 if typeOfSpec == 'spectrum':
                     self.lookup['{0}List'.format(typeOfSpec)].set(
                         'defaultDataProcessingRef',
-                        "pwiz_Reader_Thermo_conversion",
-                    )
+                        sorted(self.info['dataProcRef'].items(), key = lambda (x,y): y)[-1][0],
+                    )#consider most used dataProcessinRef as default
+                     #sort the items in dictionary by value and take the key of the last one
                 self.lookup['run'].append(self.lookup[typeOfSpec + 'List'])
                 
         self.newTree.append(
